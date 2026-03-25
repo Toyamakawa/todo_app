@@ -3,28 +3,67 @@ import json
 import os
 from datetime import datetime
 
-DATA_FILE = "todos.json"
+DATA_DIR = "data"
 
 
-def load_todos():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+def get_data_file(user_id: str) -> str:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    return os.path.join(DATA_DIR, f"user_{user_id}.json")
+
+
+def load_todos(user_id: str) -> list:
+    path = get_data_file(user_id)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
 
-def save_todos(todos):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+def save_todos(user_id: str, todos: list) -> None:
+    path = get_data_file(user_id)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(todos, f, ensure_ascii=False, indent=2)
 
 
-def main():
+def login_page() -> None:
+    st.set_page_config(page_title="ToDoアプリ ログイン", page_icon="✅", layout="centered")
+    st.title("✅ ToDoアプリ")
+    st.subheader("ユーザーコードを入力してください")
+    st.info("ユーザーコードごとに専用のToDoリストが作成されます。\n同じコードを入力すると、前回のデータが表示されます。")
+
+    with st.form("login_form"):
+        user_id = st.text_input(
+            "ユーザーコード",
+            placeholder="例: 1234, abc, myname ...",
+            max_chars=50,
+        )
+        submitted = st.form_submit_button("ログイン", use_container_width=True)
+
+    if submitted:
+        uid = user_id.strip()
+        if not uid:
+            st.error("ユーザーコードを入力してください。")
+        else:
+            st.session_state.user_id = uid
+            st.session_state.todos = load_todos(uid)
+            st.rerun()
+
+
+def todo_page() -> None:
+    user_id: str = st.session_state.user_id
+
     st.set_page_config(page_title="ToDoアプリ", page_icon="✅", layout="centered")
 
-    st.title("✅ ToDoアプリ")
-
-    if "todos" not in st.session_state:
-        st.session_state.todos = load_todos()
+    col_title, col_logout = st.columns([4, 1])
+    with col_title:
+        st.title("✅ ToDoアプリ")
+        st.caption(f"ユーザー: **{user_id}**")
+    with col_logout:
+        st.write("")
+        if st.button("ログアウト", type="secondary"):
+            del st.session_state.user_id
+            del st.session_state.todos
+            st.rerun()
 
     # --- タスク追加フォーム ---
     with st.form("add_form", clear_on_submit=True):
@@ -45,7 +84,7 @@ def main():
                     "created_at": datetime.now().strftime("%Y/%m/%d %H:%M"),
                 }
             )
-            save_todos(st.session_state.todos)
+            save_todos(user_id, st.session_state.todos)
             st.success(f"「{new_task.strip()}」を追加しました！")
 
     st.divider()
@@ -62,7 +101,11 @@ def main():
 
     filtered = [
         t for t in todos
-        if (status_filter == "すべて" or (status_filter == "未完了" and not t["done"]) or (status_filter == "完了済み" and t["done"]))
+        if (
+            status_filter == "すべて"
+            or (status_filter == "未完了" and not t["done"])
+            or (status_filter == "完了済み" and t["done"])
+        )
         and (priority_filter == "すべて" or t.get("priority", "普通") == priority_filter)
     ]
 
@@ -71,7 +114,7 @@ def main():
     if not filtered:
         st.info("タスクがありません。")
     else:
-        for i, todo in enumerate(filtered):
+        for todo in filtered:
             actual_idx = next(j for j, t in enumerate(todos) if t["id"] == todo["id"])
             cols = st.columns([0.5, 4, 1, 1])
 
@@ -79,7 +122,7 @@ def main():
                 done = st.checkbox("", value=todo["done"], key=f"done_{todo['id']}")
                 if done != todo["done"]:
                     st.session_state.todos[actual_idx]["done"] = done
-                    save_todos(st.session_state.todos)
+                    save_todos(user_id, st.session_state.todos)
                     st.rerun()
 
             with cols[1]:
@@ -98,13 +141,13 @@ def main():
                 )
                 if new_priority != todo.get("priority", "普通"):
                     st.session_state.todos[actual_idx]["priority"] = new_priority
-                    save_todos(st.session_state.todos)
+                    save_todos(user_id, st.session_state.todos)
                     st.rerun()
 
             with cols[3]:
                 if st.button("削除", key=f"del_{todo['id']}", type="secondary"):
                     st.session_state.todos.pop(actual_idx)
-                    save_todos(st.session_state.todos)
+                    save_todos(user_id, st.session_state.todos)
                     st.rerun()
 
     # --- フッター統計 ---
@@ -122,12 +165,18 @@ def main():
             st.balloons()
             st.success("すべてのタスクが完了しました！🎉")
 
-        # 完了済みタスクをまとめて削除
         if done_count > 0:
             if st.button("完了済みをすべて削除", type="primary"):
                 st.session_state.todos = [t for t in todos if not t["done"]]
-                save_todos(st.session_state.todos)
+                save_todos(user_id, st.session_state.todos)
                 st.rerun()
+
+
+def main() -> None:
+    if "user_id" not in st.session_state:
+        login_page()
+    else:
+        todo_page()
 
 
 if __name__ == "__main__":
