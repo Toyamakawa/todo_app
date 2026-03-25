@@ -36,6 +36,7 @@ def login_page() -> None:
             "ユーザーコード",
             placeholder="例: 1234, abc, myname ...",
             max_chars=50,
+            autocomplete="off",
         )
         submitted = st.form_submit_button("ログイン", use_container_width=True)
 
